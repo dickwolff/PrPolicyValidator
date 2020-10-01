@@ -19,7 +19,7 @@ namespace PrPolicy
     /// </summary>
     public class PrFunction
     {
-        // Azure DevOps configuration.
+        // Azure DevOps configuration (from settings.json).
         private readonly string DEVOPS_ACCOUNT = Environment.GetEnvironmentVariable("DEVOPS_ACCOUNT");
         private readonly string DEVOPS_PROJECT = Environment.GetEnvironmentVariable("DEVOPS_PROJECT");
         private readonly string DEVOPS_PAT = Environment.GetEnvironmentVariable("DEVOPS_PAT");
