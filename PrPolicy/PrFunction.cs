@@ -1,16 +1,17 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.TeamFoundation.SourceControl.WebApi;
+using Microsoft.VisualStudio.Services.Common;
+using Microsoft.VisualStudio.Services.WebApi;
 using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace PrPolicy
 {
@@ -50,7 +51,7 @@ namespace PrPolicy
                 }
 
                 // Get request body.
-                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                var requestBody = await new StreamReader(req.Body).ReadToEndAsync();
                 log.LogInformation($"Data Received: {requestBody}");
 
                 // Get the pull request object from the service hooks payload.
@@ -73,7 +74,7 @@ namespace PrPolicy
                 log.LogInformation($"Service Hook Received for PR: {pullRequestId} {jObject.resource.title}");
 
                 // Read repository name.
-                var repositoryName = (string)jObject.resource.repository.name;
+                var repositoryId = (string)jObject.resource.repository.id;
 
                 // Determine if changelog is optional.
                 var clOptional = req.Query["validateChangelog"] == "false";
@@ -84,25 +85,24 @@ namespace PrPolicy
                 var prIsValid = new Tuple<bool, bool>(false, clOptional);
 
                 // Go get all commits and convert to list.
-                dynamic jCommits = await GetCommitsAsync(repositoryName, pullRequestId);
-                var commits = jCommits.value.ToObject<List<dynamic>>();
+                var commits = await GetCommitsAsync(repositoryId, pullRequestId);
 
                 // Loop through commits and check the file changes.
-                for (var idx = 0; idx < commits.Count; idx++)
+                foreach (var commit in commits)
                 {
-                    var commitId = (string)commits[idx].commitId;
-
                     // Get all changes for current commit.
-                    var jChanges = await GetCommitAsync(repositoryName, commitId);
-                    var changes = jChanges.changes.ToObject<List<dynamic>>();
+                    var commitSet = await GetCommitAsync(repositoryId, commit.CommitId);
 
-                    for (var idy = 0; idy < changes.Count; idy++)
+                    // If there are no changes, skip the commit.
+                    if (commitSet.Changes == null)
                     {
-                        var change = changes[idy];
+                        continue;
+                    }
 
+                    foreach (var change in commit.Changes)
+                    {
                         // Get name of changed file.
-                        var path = (string)change.item.path;
-                        var fileSplit = path.Split('/');
+                        var fileSplit = change.Item.Path.Split('/');
                         var fileName = fileSplit[fileSplit.Length - 1];
 
                         // Check GitVersion file.
@@ -122,7 +122,7 @@ namespace PrPolicy
                 }
 
                 // Update the status on the PR.
-                await PostStatusOnPullRequestAsync(repositoryName, pullRequestId, ComputeStatus(prIsValid));
+                await PostStatusOnPullRequestAsync(repositoryId, pullRequestId, ComputeStatus(prIsValid));
 
                 // Finally, OK.
                 return new OkResult();
@@ -154,77 +154,42 @@ namespace PrPolicy
             return null;
         }
 
-        private async Task<dynamic> GetCommitsAsync(string repositoryName, int pullRequestId)
+        private async Task<List<GitCommitRef>> GetCommitsAsync(string repositoryId, int pullRequestId)
         {
-            var prUrl = string.Format(
-                @"https://dev.azure.com/{0}/{1}/_apis/git/repositories/{2}/pullRequests/{3}/commits?api-version=5.1",
-                DEVOPS_ACCOUNT,
-                DEVOPS_PROJECT,
-                repositoryName,
-                pullRequestId);
-
-            using (HttpClient client = new HttpClient())
+            var connection = CreateConnection();
+            using (var client = connection.GetClient<GitHttpClient>())
             {
-                AddAzureHeaders(client);
-
-                var result = await client.GetAsync(prUrl).ConfigureAwait(false);
-                var data = await result.Content.ReadAsStringAsync().ConfigureAwait(false);
-
-                // Return the result as an usable object.
-                return JsonConvert.DeserializeObject(data);
+                return await client.GetPullRequestCommitsAsync(repositoryId, pullRequestId);
             }
         }
 
-        private async Task<dynamic> GetCommitAsync(string repositoryName, string commitId)
+        private async Task<GitCommitChanges> GetCommitAsync(string repositoryId, string commitId)
         {
-            string prUrl = string.Format(
-               @"https://dev.azure.com/{0}/{1}/_apis/git/repositories/{2}/commits/{3}/changes?api-version=5.0",
-               DEVOPS_ACCOUNT,
-               DEVOPS_PROJECT,
-               repositoryName,
-               commitId);
-
-            using (HttpClient client = new HttpClient())
+            var connection = CreateConnection();
+            using (var client = connection.GetClient<GitHttpClient>())
             {
-                AddAzureHeaders(client);
-
-                var result = await client.GetAsync(prUrl);
-                var data = await result.Content.ReadAsStringAsync();
-
-                // Return the result as an usable object.
-                return JsonConvert.DeserializeObject(data);
+                return await client.GetChangesAsync(commitId, repositoryId);
             }
         }
 
-        private void AddAzureHeaders(HttpClient client)
+        private async Task PostStatusOnPullRequestAsync(string repositoryId, int pullRequestId, GitPullRequestStatus status)
         {
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(
-                    Encoding.ASCII.GetBytes(
-                    string.Format("{0}:{1}", "", DEVOPS_PAT))));
-        }
-
-        private async Task PostStatusOnPullRequestAsync(string repositoryName, int pullRequestId, string status)
-        {
-            string statusUrl = string.Format(
-                @"https://dev.azure.com/{0}/{1}/_apis/git/repositories/{2}/pullrequests/{3}/statuses?api-version=4.1-preview.1",
-                DEVOPS_ACCOUNT,
-                DEVOPS_PROJECT,
-                repositoryName,
-                pullRequestId);
-
-            using (var client = new HttpClient())
+            var connection = CreateConnection();
+            using (var client = connection.GetClient<GitHttpClient>())
             {
-                AddAzureHeaders(client);
-
-                await client.PostAsync(statusUrl, new StringContent(status, Encoding.UTF8, "application/json"));
+                await client.CreatePullRequestStatusAsync(status, repositoryId, pullRequestId);
             }
         }
 
-        private string ComputeStatus(Tuple<bool, bool> prStatus)
+        private VssConnection CreateConnection()
+        {
+            return new VssConnection(new Uri($"https://dev.azure.com/{DEVOPS_ACCOUNT}"), new VssBasicCredential(string.Empty, DEVOPS_PAT));
+        }
+
+        private GitPullRequestStatus ComputeStatus(Tuple<bool, bool> prStatus)
         {
             // Default OK.
-            var state = "succeeded";
+            var state = GitStatusState.Succeeded;
             var description = string.Empty;
 
             // If item1 is false, GitVersion file was not changed.
@@ -253,22 +218,21 @@ namespace PrPolicy
             else
             {
                 // At least one file has not been changed. Set status to fail and complete description text.
-                state = "failed";
+                state = GitStatusState.Failed;
                 description += " niet bijgewerkt.";
             }
 
             // Return object to send to Azure DevOps as string.
-            return JsonConvert.SerializeObject(
-                new
+            return new GitPullRequestStatus
+            {
+                State = state,
+                Description = description,
+                Context = new GitStatusContext
                 {
-                    State = state,
-                    Description = description,
-                    Context = new
-                    {
-                        Name = "Validatie Git Bestanden",
-                        Genre = "Team Newton"
-                    }
-                });
+                    Name = "Validatie Git Bestanden",
+                    Genre = "Team Newton"
+                }
+            };
         }
     }
 }
