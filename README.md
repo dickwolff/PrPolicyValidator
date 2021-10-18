@@ -16,3 +16,10 @@ The function is a HTTP triggered one that receives an Azure DevOps PR WebHook (t
 Currently there are two options:
 - By not adding parameters to the request URL the function will validate both the `GitVersion.yml` and `CHANGELOG.md` files.
 - Adding `?validateChangelog=false` to the request URL will skip `CHANGELOG.md` validation. I added this option because it's something we do but not everyone will. 
+
+### How to use
+
+- Create an Azure Function App in Azure.
+- Create a PAT in Azure Devops (`https://dev.azure.com/{DEVOPS_ACCOUNT}/_usersSettings/tokens`). The PAT should have the policies Code (Read, write, & manage) and Pull Request Threads (Read & write).
+- Add the DEVOPS_ACCOUNT, DEVOPS_PROJECT and DEVOPS_PAT settings to the Function App Configuration.
+- Deploy the project from Visual Studio to the deployed Azure Function App.
