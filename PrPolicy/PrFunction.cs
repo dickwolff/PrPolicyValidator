@@ -98,7 +98,7 @@ namespace PrPolicy
                         continue;
                     }
 
-                    foreach (var change in commit.Changes)
+                    foreach (var change in commitSet.Changes)
                     {
                         // Get name of changed file.
                         var fileSplit = change.Item.Path.Split('/');
