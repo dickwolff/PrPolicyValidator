@@ -20,6 +20,18 @@ Currently there are two options:
 ### How to use
 
 - Create an Azure Function App in Azure.
-- Create a PAT in Azure Devops (`https://dev.azure.com/{DEVOPS_ACCOUNT}/_usersSettings/tokens`). The PAT should have the policies Code (Read, write, & manage) and Pull Request Threads (Read & write).
-- Add the DEVOPS_ACCOUNT, DEVOPS_PROJECT and DEVOPS_PAT settings to the Function App Configuration.
+- Create a PAT in Azure Devops (on `https://dev.azure.com/{DEVOPS_ACCOUNT}/_usersSettings/tokens`). The PAT should have the policies Code (Read, write, & manage) and Pull Request Threads (Read & write).
+- Add the `DEVOPS_ACCOUNT`, `DEVOPS_PROJECT` and `DEVOPS_PAT` settings to the Function App Configuration (environment variables).
 - Deploy the project from Visual Studio to the deployed Azure Function App.
+- Add the PR Validator to your Project (on `https://dev.azure.com/{DEVOPS_ACCOUNT}/{DEVOPS_PROJECT}/_settings/serviceHooks`).
+  - Click the `+` icon to add a new Service Hook, scroll down and choose `Web Hook`.
+  - Select `Pull request created` as the event trigger.
+  - Add repository/branch/member/reviewer filters as prefered, or leave default to enable it for every repository.
+  - On the URL, enter the Azure Function App URL, e.g. `https://myfunctionapp.azurewebsites.net/api/GitVersionChangeLogChecker` and click finish to add it.
+  - Follow the steps above again for the `Pull request updated` event trigger.
+- Go to the repository where you want the PR Policy validator to run. 
+  - Navigate by Repository > Branches.
+  - Click on the 3 dots on the right side of the branch you want to validate (e.g. main/master) and choose `Branch Policies`.
+  - Scroll to `Status Checks` and click the `+` to add a new policy.
+  - Select the policy from the drop down, and select the requirement as prefered.
+    - Don't see the PR validator? Make sure the build has run at least once since you've added the policy in the previous steps. Otherwise it won't show up.
