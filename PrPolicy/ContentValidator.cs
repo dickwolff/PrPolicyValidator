@@ -31,7 +31,7 @@ namespace PrPolicy
             var originalYaml = deserializer.Deserialize<GitVersion>(originalContents);
             var updatedYaml = deserializer.Deserialize<GitVersion>(updatedContents);
 
-            // If both files are the same, the updated content isn't really updated, but reverted to the original state
+            // If both files have the same version, the contents aren't really updated, but rather reverted to the original state.
             if (originalYaml.NextVersion == updatedYaml.NextVersion)
             {
                 return false;
