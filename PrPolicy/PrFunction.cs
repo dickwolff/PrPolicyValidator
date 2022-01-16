@@ -20,9 +20,9 @@ namespace PrPolicy
     public class PrFunction
     {
         // Azure DevOps configuration (from settings.json).
-        private readonly string DEVOPS_ACCOUNT = "ns-topaas";
-        private readonly string DEVOPS_PROJECT = "SPP";
-        private readonly string DEVOPS_PAT = "h642olks4z73b7pc2dxqhmpdsvdp4crw66gzcmtrozmdzy75uqzq";
+        private readonly string DEVOPS_ACCOUNT = Environment.GetEnvironmentVariable("DEVOPS_ACCOUNT");
+        private readonly string DEVOPS_PROJECT = Environment.GetEnvironmentVariable("DEVOPS_PROJECT");
+        private readonly string DEVOPS_PAT = Environment.GetEnvironmentVariable("DEVOPS_PAT");
 
         /// <summary>
         /// HTTP Trigger to be called by Azure DevOps Web Hook.
