@@ -9,7 +9,9 @@ There were times when we forgot to change these files and thus we needed to add 
 
 ### The inner working
 
-The function is a HTTP triggered one that receives an Azure DevOps PR WebHook (to configure in Azure DevOps) as an input. After validating the request, the code will take a look at al the files changed in the PR and will check wether the `GitVersion.yml` is changed (and really updated). It will also do the same for the `CHANGELOG.md` file.
+The function is a HTTP triggered one that receives an Azure DevOps PR WebHook (to configure in Azure DevOps) as an input. After validating the request, the code will take a look at all the files changed in the PR and will check wether the `GitVersion.yml` is changed (and really updated). It will also do the same for the `CHANGELOG.md` file.
+
+NOTE: The function expects the GitVersion to have a `next-version` property with 3 digits, e.g. `next-version: 0.1.0`.
 
 ### Options
 

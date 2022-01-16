@@ -63,8 +63,7 @@ namespace PrPolicy
                 }
 
                 // Get the pull request id.
-                int pullRequestId;
-                if (!int.TryParse(jObject.resource.pullRequestId.ToString(), out pullRequestId))
+                if (!int.TryParse(jObject.resource.pullRequestId.ToString(), out int pullRequestId))
                 {
                     log.LogInformation("Failed to parse the pull request id from the service hooks payload.");
                 }
@@ -74,6 +73,10 @@ namespace PrPolicy
 
                 // Read repository name.
                 var repositoryId = (string)jObject.resource.repository.id;
+
+                // Get the branches, remove "/refs/heads/" part.
+                var sourceBranch = ((string)jObject.resource.sourceRefName).Replace("refs/heads/", "");
+                var targetBranch = ((string)jObject.resource.targetRefName).Replace("refs/heads/", "");
 
                 // Determine if changelog is optional.
                 var clOptional = req.Query["validateChangelog"] == "false";
@@ -102,14 +105,15 @@ namespace PrPolicy
                     {
                         // Get name of changed file.
                         var fileSplit = change.Item.Path.Split('/');
-                        var fileName = fileSplit[fileSplit.Length - 1];
+                        var fileName = fileSplit[^1];
 
                         // Check GitVersion file.
                         if (fileName.ToLowerInvariant().Contains("gitversion.yml"))
                         {
-                            // @todo: content validation
+                            // Validate the GitVersion file.
+                            var isValidGitversionFile = await ValidateGitVersionFileAsync(repositoryId, sourceBranch, targetBranch, change);
 
-                            prIsValid = new Tuple<bool, bool>(true, prIsValid.Item2);
+                            prIsValid = new Tuple<bool, bool>(isValidGitversionFile, prIsValid.Item2);
                         }
 
                         // Check Changelog file.
@@ -153,36 +157,68 @@ namespace PrPolicy
             return null;
         }
 
+        #region Azure DevOps calls
+
         private async Task<List<GitCommitRef>> GetCommitsAsync(string repositoryId, int pullRequestId)
         {
             var connection = CreateConnection();
-            using (var client = connection.GetClient<GitHttpClient>())
-            {
-                return await client.GetPullRequestCommitsAsync(repositoryId, pullRequestId);
-            }
+            using var client = connection.GetClient<GitHttpClient>();
+            return await client.GetPullRequestCommitsAsync(repositoryId, pullRequestId);
         }
 
         private async Task<GitCommitChanges> GetCommitAsync(string repositoryId, string commitId)
         {
             var connection = CreateConnection();
-            using (var client = connection.GetClient<GitHttpClient>())
-            {
-                return await client.GetChangesAsync(commitId, repositoryId);
-            }
+            using var client = connection.GetClient<GitHttpClient>();
+            return await client.GetChangesAsync(commitId, repositoryId);
+        }
+
+        private async Task<string> GetFileAsync(string repositoryId, string targetBranch, string filePath)
+        {
+            var connection = CreateConnection();
+            using var client = connection.GetClient<GitHttpClient>();
+            var stream = await client.GetItemTextAsync(repositoryId, filePath, versionDescriptor: new GitVersionDescriptor { Version = targetBranch });
+            var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
         }
 
         private async Task PostStatusOnPullRequestAsync(string repositoryId, int pullRequestId, GitPullRequestStatus status)
         {
             var connection = CreateConnection();
-            using (var client = connection.GetClient<GitHttpClient>())
-            {
-                await client.CreatePullRequestStatusAsync(status, repositoryId, pullRequestId);
-            }
+            using var client = connection.GetClient<GitHttpClient>();
+            await client.CreatePullRequestStatusAsync(status, repositoryId, pullRequestId);
         }
 
         private VssConnection CreateConnection()
         {
             return new VssConnection(new Uri($"https://dev.azure.com/{DEVOPS_ACCOUNT}"), new VssBasicCredential(string.Empty, DEVOPS_PAT));
+        }
+
+        #endregion
+
+        private async Task<bool> ValidateGitVersionFileAsync(string repositoryId, string sourceBranch, string targetBranch, GitChange change)
+        {
+            bool isValidGitversionFile;
+
+            // Get the original GitVersion file (main branch).
+            var originalFile = await GetFileAsync(repositoryId, targetBranch, change.Item.Path);
+
+            // Get the contents of the changed GitVersion file from the latest commit.
+            var changedFile = await GetFileAsync(repositoryId, sourceBranch, change.Item.Path);
+
+            // If the main branch doesn't have a GitVersion file but the PR branch does, then it's added for the first time.
+            // No need to check wether it has been updated, since this is the first version of the update.
+            if (string.IsNullOrEmpty(originalFile) && !string.IsNullOrEmpty(changedFile))
+            {
+                isValidGitversionFile = true;
+            }
+            else
+            {
+                // If both branches have a GitVerion file, check the contents wether the updated file is valid.
+                isValidGitversionFile = ContentValidator.IsValidGitversion(originalFile, changedFile);
+            }
+
+            return isValidGitversionFile;
         }
 
         private GitPullRequestStatus ComputeStatus(Tuple<bool, bool> prStatus)
