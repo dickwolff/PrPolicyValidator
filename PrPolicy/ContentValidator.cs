@@ -23,7 +23,7 @@ namespace PrPolicy
             }
 
             var deserializer = new YamlDotNet.Serialization.DeserializerBuilder()
-                .WithNamingConvention(new HyphenatedNamingConvention())
+                .WithNamingConvention(HyphenatedNamingConvention.Instance)
                 .IgnoreUnmatchedProperties()
                 .Build();
 
