@@ -74,6 +74,10 @@ namespace PrPolicy
                 // Read repository name.
                 var repositoryId = (string)jObject.resource.repository.id;
 
+                // Get the branches, remove "/refs/heads/" part.
+                var sourceBranch = ((string)jObject.resource.sourceRefName).Replace("refs/heads/", "");
+                var targetBranch = ((string)jObject.resource.targetRefName).Replace("refs/heads/", "");
+
                 // Determine if changelog is optional.
                 var clOptional = req.Query["validateChangelog"] == "false";
 
@@ -107,7 +111,7 @@ namespace PrPolicy
                         if (fileName.ToLowerInvariant().Contains("gitversion.yml"))
                         {
                             // Validate the GitVersion file.
-                            var isValidGitversionFile = await ValidateGitVersionFileAsync(repositoryId, change);
+                            var isValidGitversionFile = await ValidateGitVersionFileAsync(repositoryId, sourceBranch, targetBranch, change);
 
                             prIsValid = new Tuple<bool, bool>(isValidGitversionFile, prIsValid.Item2);
                         }
@@ -169,11 +173,11 @@ namespace PrPolicy
             return await client.GetChangesAsync(commitId, repositoryId);
         }
 
-        private async Task<string> GetFileAsync(string repositoryId, string filePath)
+        private async Task<string> GetFileAsync(string repositoryId, string targetBranch, string filePath)
         {
             var connection = CreateConnection();
             using var client = connection.GetClient<GitHttpClient>();
-            var stream = await client.GetItemTextAsync(repositoryId, filePath);
+            var stream = await client.GetItemTextAsync(repositoryId, filePath, versionDescriptor: new GitVersionDescriptor { Version = targetBranch });
             var reader = new StreamReader(stream);
             return reader.ReadToEnd();
         }
@@ -192,15 +196,15 @@ namespace PrPolicy
 
         #endregion
 
-        private async Task<bool> ValidateGitVersionFileAsync(string repositoryId, GitChange change)
+        private async Task<bool> ValidateGitVersionFileAsync(string repositoryId, string sourceBranch, string targetBranch, GitChange change)
         {
             bool isValidGitversionFile;
 
             // Get the original GitVersion file (main branch).
-            var originalFile = "";
+            var originalFile = await GetFileAsync(repositoryId, targetBranch, change.Item.Path);
 
             // Get the contents of the changed GitVersion file from the latest commit.
-            var changedFile = await GetFileAsync(repositoryId, change.Item.Path);
+            var changedFile = await GetFileAsync(repositoryId, sourceBranch, change.Item.Path);
 
             // If the main branch doesn't have a GitVersion file but the PR branch does, then it's added for the first time.
             // No need to check wether it has been updated, since this is the first version of the update.

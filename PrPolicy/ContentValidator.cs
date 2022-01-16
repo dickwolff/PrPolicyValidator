@@ -1,4 +1,7 @@
-﻿namespace PrPolicy
+﻿using PrPolicy.Models;
+using YamlDotNet.Serialization.NamingConventions;
+
+namespace PrPolicy
 {
     /// <summary>
     /// Class containg validation logic for the GitVersion file.
@@ -19,14 +22,50 @@
                 return false;
             }
 
-            // If both files are the same, the updated content isn't really updated, but reverted to the original state. 
-            if (originalContents == updatedContents)
+            var deserializer = new YamlDotNet.Serialization.DeserializerBuilder()
+                .WithNamingConvention(new HyphenatedNamingConvention())
+                .IgnoreUnmatchedProperties()
+                .Build();
+
+            // Parse both YAML files to a POCO, so we can compare content.
+            var originalYaml = deserializer.Deserialize<GitVersion>(originalContents);
+            var updatedYaml = deserializer.Deserialize<GitVersion>(updatedContents);
+
+            // If both files are the same, the updated content isn't really updated, but reverted to the original state
+            if (originalYaml.NextVersion == updatedYaml.NextVersion)
             {
                 return false;
             }
 
-            // Return valid by default.
-            return true;
+            // Return wether the new YAML version is higher then the original.
+            return ParseAndValidateGitVersion(originalYaml.NextVersion, updatedYaml.NextVersion);
+        }
+
+        private static bool ParseAndValidateGitVersion(string originalVersion, string nextVersion)
+        {
+            var originalVersionSplit = originalVersion.Split('.');
+            var nextVersionSplit = nextVersion.Split('.');
+
+            // If the next major version > original, then the updated file is valid.
+            if (int.Parse(nextVersionSplit[0]) > int.Parse(originalVersionSplit[0]))
+            {
+                return true;
+            }
+
+            // If the next minor version > original, then the updated file is valid.
+            if (int.Parse(nextVersionSplit[1]) > int.Parse(originalVersionSplit[1]))
+            {
+                return true;
+            }
+
+            // If the next patch version > original, then the updated file is valid.
+            if (int.Parse(nextVersionSplit[2]) > int.Parse(originalVersionSplit[2]))
+            {
+                return true;
+            }
+
+            // Updated file has no updated GitVersion, so isn't valid.
+            return false;
         }
     }
 }
