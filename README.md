@@ -36,4 +36,4 @@ Currently there are two options:
   - Click on the 3 dots on the right side of the branch you want to validate (e.g. main/master) and choose `Branch Policies`.
   - Scroll to `Status Checks` and click the `+` to add a new policy.
   - Select the policy from the drop down, and select the requirement as prefered.
-    - Don't see the PR validator? Make sure the build has run at least once since you've added the policy in the previous steps. Otherwise it won't show up.
+    - Don't see the PR validator? Make sure the build has run at least once since you've added the policy in the previous steps. Otherwise it won't show up.a
