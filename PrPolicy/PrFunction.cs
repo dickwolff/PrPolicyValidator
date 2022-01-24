@@ -265,7 +265,7 @@ namespace PrPolicy
                 Context = new GitStatusContext
                 {
                     Name = "Validatie Git Bestanden",
-                    Genre = "Team Newton"
+                    Genre = "PR Validator" // You could put your own name here.
                 }
             };
         }
